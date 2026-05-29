@@ -1,14 +1,45 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能学术论文搜索</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能学术论文搜索</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
-<body>
-    <div id="app"></div>
-    <script type="module" src="/main.ts"></script>
+<body class="bg-gray-50 min-h-screen font-sans">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">智能学术论文搜索</h1>
+      <p class="mt-2 text-gray-500">输入复杂研究问题，自动检索、排序、归纳相关论文</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+      <div class="flex gap-3">
+        <input id="query-input" type="text" placeholder="输入你的研究问题，例如：MoE语言模型推理生成并行策略"
+          class="flex-1 px-4 py-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" autofocus />
+        <button id="search-btn" onclick="doSearch()"
+          class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium whitespace-nowrap">搜索</button>
+      </div>
+    </div>
+
+    <div id="progress-container" class="hidden mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex-1 bg-gray-200 rounded-full h-2">
+          <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+        </div>
+        <span id="progress-text" class="text-sm text-gray-500"></span>
+      </div>
+    </div>
+
+    <div id="view-toggle" class="hidden flex justify-end gap-2 mb-4">
+      <button id="btn-list" onclick="switchView('list')" class="px-3 py-1 text-sm rounded bg-blue-600 text-white">列表</button>
+      <button id="btn-graph" onclick="switchView('graph')" class="px-3 py-1 text-sm rounded bg-gray-200 text-gray-600">图谱</button>
+    </div>
+
+    <div id="results-container"></div>
+    <div id="graph-container" class="hidden bg-white rounded-xl shadow-sm border" style="height:500px"></div>
+  </div>
+  <script type="module" src="./main.ts"></script>
 </body>
 </html>
