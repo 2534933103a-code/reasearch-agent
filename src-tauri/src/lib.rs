@@ -1,6 +1,7 @@
 pub mod types;
 pub mod config;
 pub mod backends;
+pub mod modules;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
