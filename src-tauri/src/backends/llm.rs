@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::Value;
 
+#[derive(Clone)]
 pub struct LlmBackend {
     client: Client,
     config: LlmConfig,
