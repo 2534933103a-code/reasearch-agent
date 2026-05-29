@@ -1,0 +1,17 @@
+llm:
+  provider: openai
+  model: deepseek-chat
+  api_key: ""
+  base_url: https://api.deepseek.com
+
+search:
+  backends:
+    - name: openalex
+      enabled: true
+      priority: 1
+  max_results_per_query: 15
+  max_rounds: 3
+
+budget:
+  max_llm_calls: 10
+  max_search_calls: 30
