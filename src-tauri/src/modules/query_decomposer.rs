@@ -9,7 +9,7 @@ impl QueryDecomposer {
     pub async fn decompose(
         llm: &LlmBackend,
         query: &str,
-    ) -> Result<QueryPlan, anyhow::Error> {
+    ) -> Result<(QueryPlan, u32), anyhow::Error> {
         let system = r#"你是一个学术文献检索专家。你的任务是将用户的复杂研究查询分解为多个可独立检索的子查询。
 
 输出必须是严格的JSON格式，包含以下字段：
@@ -24,8 +24,9 @@ impl QueryDecomposer {
 3. 不要添加超出用户原始查询范围的约束
 4. 年份默认不限制，除非用户明确要求"#;
 
-        let response = llm.chat(system, query).await?;
-        let json: Value = serde_json::from_str(&response)
+        let resp = llm.chat(system, query).await?;
+        let tokens = resp.tokens;
+        let json: Value = serde_json::from_str(&resp.content)
             .context("Failed to parse LLM JSON response")?;
 
         let sub_queries: Vec<SubQuery> = json["sub_queries"]
@@ -70,14 +71,10 @@ impl QueryDecomposer {
             })
             .unwrap_or_default();
 
-        Ok(QueryPlan {
+        Ok((QueryPlan {
             original: query.to_string(),
             sub_queries,
-            constraints: QueryConstraints {
-                year_range,
-                venues,
-                methodology_required,
-            },
-        })
+            constraints: QueryConstraints { year_range, venues, methodology_required },
+        }, tokens))
     }
 }

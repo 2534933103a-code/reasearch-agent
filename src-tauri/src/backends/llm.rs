@@ -9,6 +9,11 @@ pub struct LlmBackend {
     pub config: LlmProfile,
 }
 
+pub struct ChatResponse {
+    pub content: String,
+    pub tokens: u32,
+}
+
 impl LlmBackend {
     pub fn new(config: LlmProfile) -> Self {
         Self {
@@ -20,7 +25,11 @@ impl LlmBackend {
         }
     }
 
-    pub async fn chat(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
+    fn extract_tokens(json: &Value) -> u32 {
+        json["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32
+    }
+
+    pub async fn chat(&self, system_prompt: &str, user_prompt: &str) -> Result<ChatResponse> {
         let url = format!("{}/v1/chat/completions", self.config.base_url.trim_end_matches('/'));
 
         let body = serde_json::json!({
@@ -54,11 +63,12 @@ impl LlmBackend {
             .as_str()
             .context("Missing content in LLM response")?
             .to_string();
+        let tokens = Self::extract_tokens(&json);
 
-        Ok(content)
+        Ok(ChatResponse { content, tokens })
     }
 
-    pub async fn chat_text(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
+    pub async fn chat_text(&self, system_prompt: &str, user_prompt: &str) -> Result<ChatResponse> {
         let url = format!("{}/v1/chat/completions", self.config.base_url.trim_end_matches('/'));
 
         let body = serde_json::json!({
@@ -85,7 +95,8 @@ impl LlmBackend {
             .as_str()
             .context("Missing content in LLM response")?
             .to_string();
+        let tokens = Self::extract_tokens(&json);
 
-        Ok(content)
+        Ok(ChatResponse { content, tokens })
     }
 }

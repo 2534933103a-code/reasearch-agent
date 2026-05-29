@@ -8,7 +8,7 @@ impl ResultOrganizer {
         llm: &LlmBackend,
         tiers: &TieredResults,
         original_query: &str,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<(String, u32), anyhow::Error> {
         let high_count = tiers.high_relevance.len();
         let partial_count = tiers.partial_relevance.len();
 
@@ -22,13 +22,11 @@ impl ResultOrganizer {
         let system = "你是一个学术研究助手。请根据搜索结果，用2-3句话总结主要发现的研究方向和代表论文。用中文输出。";
         let user_prompt = format!(
             "查询: {}\n高度相关({}):\n{}\n部分相关({})\n请总结主要研究方向。",
-            original_query,
-            high_count,
-            high_sample.join("\n"),
-            partial_count
+            original_query, high_count, high_sample.join("\n"), partial_count
         );
 
-        llm.chat_text(system, &user_prompt).await
+        let resp = llm.chat_text(system, &user_prompt).await?;
+        Ok((resp.content, resp.tokens))
     }
 
     pub fn build_graph(tiers: &TieredResults) -> GraphData {

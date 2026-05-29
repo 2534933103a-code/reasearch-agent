@@ -123,7 +123,7 @@ async fn search(
         }
         Err(e) => {
             state.progress.lock().unwrap().push(types::ProgressEvent {
-                phase: "error".into(), message: format!("{}", e), percent: 0, detail: String::new(),
+                phase: "error".into(), message: format!("{}", e), percent: 0, detail: String::new(), tokens: 0,
             });
             Err(e.to_string())
         }
@@ -150,7 +150,7 @@ async fn refine_search(
             .map(|m| format!("- {}", m.content))
             .collect::<Vec<_>>().join("\n");
         let prompt = format!("用户之前的查询:\n{}\n\n用户反馈: {}\n\n请根据反馈生成更精确的英文搜索关键词。只输出关键词。", history, refinement);
-        llm.chat_text("你是学术搜索助手。根据用户反馈生成优化后的搜索关键词。", &prompt).await.unwrap_or(refinement.clone())
+        llm.chat_text("你是学术搜索助手。根据用户反馈生成优化后的搜索关键词。", &prompt).await.map(|r| r.content).unwrap_or(refinement.clone())
     } else {
         refinement.clone()
     };
@@ -179,7 +179,7 @@ async fn refine_search(
         }
         Err(e) => {
             state.progress.lock().unwrap().push(types::ProgressEvent {
-                phase: "error".into(), message: format!("{}", e), percent: 0, detail: String::new(),
+                phase: "error".into(), message: format!("{}", e), percent: 0, detail: String::new(), tokens: 0,
             });
             Err(e.to_string())
         }

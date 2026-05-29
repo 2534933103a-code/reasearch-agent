@@ -61,6 +61,7 @@ pub struct ProgressEvent {
     pub message: String,
     pub percent: u8,
     pub detail: String,
+    pub tokens: u32,  // cumulative total tokens used so far
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

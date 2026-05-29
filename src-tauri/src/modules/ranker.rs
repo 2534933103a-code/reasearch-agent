@@ -33,8 +33,9 @@ impl Ranker {
         llm: &LlmBackend,
         papers: &[Paper],
         original_query: &str,
-    ) -> Result<Vec<ScoredPaper>, anyhow::Error> {
+    ) -> Result<(Vec<ScoredPaper>, u32), anyhow::Error> {
         let mut scored = Vec::new();
+        let mut total_tokens = 0u32;
         let batch_size = 20;
 
         for chunk in papers.chunks(batch_size) {
@@ -44,11 +45,9 @@ impl Ranker {
                 .map(|(i, p)| {
                     format!(
                         "[{}] Title: {}\nAuthors: {}\nYear: {}\nVenue: {}\nAbstract: {}",
-                        i,
-                        p.title,
+                        i, p.title,
                         p.authors.first().map(|s| s.as_str()).unwrap_or("Unknown"),
-                        p.year,
-                        p.venue,
+                        p.year, p.venue,
                         &p.abstract_text[..300.min(p.abstract_text.len())]
                     )
                 })
@@ -63,8 +62,9 @@ impl Ranker {
                 papers_text.join("\n\n")
             );
 
-            let response = llm.chat(system, &user_prompt).await?;
-            let json: Value = serde_json::from_str(&response)?;
+            let resp = llm.chat(system, &user_prompt).await?;
+            total_tokens += resp.tokens;
+            let json: Value = serde_json::from_str(&resp.content)?;
 
             if let Some(scores) = json["scores"].as_array() {
                 for entry in scores {
@@ -73,17 +73,14 @@ impl Ranker {
                         scored.push(ScoredPaper {
                             paper: chunk[idx].clone(),
                             score: entry["score"].as_u64().unwrap_or(5) as u8,
-                            rationale: entry["rationale"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string(),
+                            rationale: entry["rationale"].as_str().unwrap_or("").to_string(),
                         });
                     }
                 }
             }
         }
 
-        Ok(scored)
+        Ok((scored, total_tokens))
     }
 
     pub fn partition(scored: Vec<ScoredPaper>) -> TieredResults {

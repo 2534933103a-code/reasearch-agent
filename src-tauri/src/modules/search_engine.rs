@@ -39,7 +39,7 @@ impl SearchEngine {
         plan: &QueryPlan,
         _round: u32,
         max_per_query: usize,
-    ) -> Result<Vec<Paper>, anyhow::Error> {
+    ) -> Result<(Vec<Paper>, u32), anyhow::Error> {
         let paper_summaries: Vec<String> = current_papers
             .iter()
             .take(30)
@@ -60,8 +60,9 @@ impl SearchEngine {
             paper_summaries.join("\n")
         );
 
-        let response = llm.chat(system, &user_prompt).await?;
-        let json: serde_json::Value = serde_json::from_str(&response)?;
+        let resp = llm.chat(system, &user_prompt).await?;
+        let tokens = resp.tokens;
+        let json: serde_json::Value = serde_json::from_str(&resp.content)?;
 
         let new_queries: Vec<String> = json["new_queries"]
             .as_array()
@@ -78,7 +79,7 @@ impl SearchEngine {
             new_papers.extend(results);
         }
 
-        Ok(new_papers)
+        Ok((new_papers, tokens))
     }
 
     pub async fn citation_expansion(

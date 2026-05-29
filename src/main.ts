@@ -6,7 +6,7 @@ declare const d3: any;
 interface Paper { id: string; title: string; authors: string[]; year: number; venue: string; doi: string; abstract_text: string; citation_count: number; url: string; }
 interface ScoredPaper { paper: Paper; score: number; rationale: string; }
 interface SearchResult { summary: string; tiers: { high_relevance: ScoredPaper[]; partial_relevance: ScoredPaper[] }; total_candidates: number; rounds_used: number; }
-interface ProgressEvent { phase: string; message: string; percent: number; detail: string; }
+interface ProgressEvent { phase: string; message: string; percent: number; detail: string; tokens: number; }
 interface LlmProfile { id: string; name: string; provider: string; model: string; api_key: string; base_url: string; }
 interface LlmConfig { profiles: LlmProfile[]; active_profile_id: string; }
 interface AppConfig { llm: LlmConfig; search: any; budget: any; }
@@ -49,7 +49,7 @@ function renderActivity() {
   let h = `<h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">搜索进度</h3>`;
   activitySteps.forEach((s, i) => {
     const last = i === activitySteps.length - 1;
-    h += `<div class="flex gap-3"><div class="flex flex-col items-center"><span class="text-sm ${s.done ? "" : "animate-pulse"}">${s.icon}</span>${last ? "" : '<div class="step-line flex-1 bg-slate-200"></div>'}</div><div class="pb-4"><p class="text-sm ${s.done ? "text-slate-600" : "text-slate-900 font-medium"}">${s.text}</p>${s.detail ? `<p class="text-xs text-slate-400 mt-0.5 truncate">${s.detail}</p>` : ""}</div></div>`;
+    h += `<div class="flex gap-3"><div class="flex flex-col items-center"><span class="text-sm ${s.done ? "" : "animate-pulse"}">${s.icon}</span>${last ? "" : '<div class="step-line flex-1 bg-slate-200"></div>'}</div><div class="${last ? "pb-2" : "pb-4"} flex-1"><p class="text-sm ${s.done ? "text-slate-600" : "text-slate-900 font-medium"}">${s.text}</p>${s.detail ? `<div class="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">${s.detail}</div>` : ""}</div></div>`;
   });
   c.innerHTML = h;
   c.scrollTop = c.scrollHeight;
@@ -62,7 +62,7 @@ async function pollProgress(pollTimer: number, lastCount: number): Promise<numbe
     for (let i = lastCount; i < steps.length; i++) {
       const p = steps[i];
       let detail = "";
-      try { const d = JSON.parse(p.detail); if (d.sub_queries) detail = d.sub_queries.join(" · "); else if (d.found !== undefined) detail = `发现 ${d.found} 篇`; else if (d.added !== undefined) detail = `+${d.added} 篇`; else if (d.high !== undefined) detail = `高 ${d.high} · 部分 ${d.partial}`; else if (d.top) detail = "追踪引用中"; } catch (_) {}
+      try { const d = JSON.parse(p.detail); if (d.sub_queries) detail = d.sub_queries.map((s: string) => `<span class="inline-flex items-center gap-1"><span class="text-[10px] text-slate-300">▸</span>${esc(s)}</span>`).join(""); else if (d.found !== undefined) detail = `发现 ${d.found} 篇`; else if (d.added !== undefined) detail = `+${d.added} 篇`; else if (d.high !== undefined) detail = `高 ${d.high} · 部分 ${d.partial}`; else if (d.top) detail = "追踪引用中"; } catch (_) {}
       addStep(p.phase, p.message, detail);
     }
     return steps.length;
@@ -97,7 +97,7 @@ async function doSearch() {
     document.getElementById("results-container")!.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 text-sm">${esc(String(err))}</div>`;
   } finally {
     btn.disabled = false; btn.textContent = "搜索";
-    document.getElementById("activity-feed")!.classList.add("hidden");
+    // Keep activity feed visible — user can review what happened
   }
 }
 
@@ -128,7 +128,6 @@ async function doRefine() {
     addStep("error", `细化失败: ${err}`, "");
   } finally {
     btn.disabled = false; btn.textContent = "细化";
-    document.getElementById("activity-feed")!.classList.add("hidden");
   }
 }
 
