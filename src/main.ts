@@ -24,6 +24,9 @@ interface GraphNode { index: number; title: string; cluster: number; }
 interface GraphEdge { source: number; target: number; relation: string; }
 interface GraphData { nodes: GraphNode[]; edges: GraphEdge[]; }
 
+interface LlmConfig { provider: string; model: string; api_key: string; base_url: string; }
+interface AppConfig { llm: LlmConfig; search: any; budget: any; }
+
 // ── State ──────────────────────────────────────────
 let currentResult: SearchResult | null = null;
 let currentGraphData: GraphData | null = null;
@@ -168,6 +171,54 @@ function renderGraph(data: GraphData) {
   sim.on("tick", () => { link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y).attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y); node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y); });
 }
 
+// ── Settings ──────────────────────────────────────
+async function openSettings() {
+  try {
+    const cfg = await invoke<AppConfig>("get_config");
+    (document.getElementById("cfg-api-key") as HTMLInputElement).value = cfg.llm.api_key;
+    (document.getElementById("cfg-base-url") as HTMLInputElement).value = cfg.llm.base_url;
+    (document.getElementById("cfg-model") as HTMLInputElement).value = cfg.llm.model;
+  } catch (_) {}
+  document.getElementById("settings-modal")!.classList.remove("hidden");
+}
+
+function closeSettings() {
+  document.getElementById("settings-modal")!.classList.add("hidden");
+}
+
+async function saveSettings() {
+  const api_key = (document.getElementById("cfg-api-key") as HTMLInputElement).value.trim();
+  const base_url = (document.getElementById("cfg-base-url") as HTMLInputElement).value.trim();
+  const model = (document.getElementById("cfg-model") as HTMLInputElement).value.trim();
+
+  if (!api_key) { alert("API Key 不能为空"); return; }
+
+  try {
+    const cfg = await invoke<AppConfig>("get_config");
+    cfg.llm.api_key = api_key;
+    cfg.llm.base_url = base_url || "https://api.deepseek.com";
+    cfg.llm.model = model || "deepseek-chat";
+    await invoke("update_config", { newConfig: cfg });
+    closeSettings();
+  } catch (err) {
+    alert("保存失败: " + err);
+  }
+}
+
+// ── Init ──────────────────────────────────────────
+async function initApp() {
+  try {
+    const cfg = await invoke<AppConfig>("get_config");
+    if (!cfg.llm.api_key) {
+      openSettings();
+    }
+  } catch (_) {}
+}
+initApp();
+
 // Expose to HTML onclick handlers
 (window as any).doSearch = doSearch;
 (window as any).switchView = switchView;
+(window as any).openSettings = openSettings;
+(window as any).closeSettings = closeSettings;
+(window as any).saveSettings = saveSettings;

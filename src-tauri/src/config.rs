@@ -45,6 +45,15 @@ impl AppConfig {
         Ok(config)
     }
 
+    pub fn save(&self, path: &PathBuf) -> Result<(), anyhow::Error> {
+        let content = serde_yaml::to_string(self)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
     pub fn default_config() -> Self {
         Self {
             llm: LlmConfig {

@@ -50,6 +50,27 @@ async fn get_config(
     Ok(config.clone())
 }
 
+#[tauri::command]
+async fn update_config(
+    state: State<'_, AppState>,
+    new_config: AppConfig,
+) -> Result<(), String> {
+    let config_path = std::env::current_dir()
+        .map_err(|e| e.to_string())?
+        .join("config.yaml");
+
+    new_config.save(&config_path).map_err(|e| e.to_string())?;
+
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    *config = new_config.clone();
+
+    // Reset LLM backend so it picks up new config on next search
+    let mut llm = state.llm.lock().map_err(|e| e.to_string())?;
+    *llm = Some(LlmBackend::new(new_config.llm));
+
+    Ok(())
+}
+
 fn load_config() -> AppConfig {
     let resource_path = std::env::current_dir()
         .ok()
@@ -76,7 +97,7 @@ pub fn run() {
             config: Mutex::new(config),
             llm: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![search, get_config])
+        .invoke_handler(tauri::generate_handler![search, get_config, update_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
