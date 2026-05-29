@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 
 declare const d3: any;
 
@@ -22,6 +21,7 @@ const PHASES: Record<string, { icon: string; label: string }> = {
   decompose:      { icon: "🧠", label: "解析查询" },
   decompose_done: { icon: "✅", label: "查询分解" },
   search:         { icon: "🔍", label: "广度搜索" },
+  search_detail:  { icon: "🔎", label: "搜索词" },
   search_done:    { icon: "📊", label: "搜索完成" },
   refine:         { icon: "🎯", label: "精细检索" },
   refine_done:    { icon: "📈", label: "检索结果" },
@@ -95,32 +95,50 @@ async function doSearch() {
   btn.disabled = true;
   btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> 搜索中...`;
 
-  const unlisten = await listen<ProgressEvent>("progress", (event) => {
-    const p = event.payload;
-    let detail = "";
+  let lastStepCount = 0;
+  const pollTimer = setInterval(async () => {
     try {
-      const d = JSON.parse(p.detail);
-      if (d.sub_queries) detail = d.sub_queries.join(" · ");
-      else if (d.found !== undefined) detail = `发现 ${d.found} 篇论文`;
-      else if (d.added !== undefined) detail = `新增 ${d.added} 篇`;
-      else if (d.high !== undefined) detail = `高度相关 ${d.high} 篇 · 部分相关 ${d.partial} 篇`;
-      else if (d.candidates !== undefined) detail = `${d.candidates} 篇 · 分 ${d.batches} 批`;
-      else if (d.top_papers) detail = `正在追踪: ${d.top_papers.slice(0,2).join(" · ")}`;
+      const steps = await invoke<ProgressEvent[]>("get_progress");
+      for (let i = lastStepCount; i < steps.length; i++) {
+        const p = steps[i];
+        let detail = "";
+        try {
+          const d = JSON.parse(p.detail);
+          if (d.sub_queries) detail = d.sub_queries.join(" · ");
+          else if (d.found !== undefined) detail = `发现 ${d.found} 篇论文`;
+          else if (d.added !== undefined) detail = `新增 ${d.added} 篇`;
+          else if (d.high !== undefined) detail = `高度相关 ${d.high} 篇 · 部分相关 ${d.partial} 篇`;
+          else if (d.candidates !== undefined) detail = `${d.candidates} 篇 · 分 ${d.batches} 批`;
+          else if (d.top) detail = `正在追踪相关论文`;
+        } catch (_) {}
+        addStep(p.phase, p.message, detail);
+      }
+      lastStepCount = steps.length;
     } catch (_) {}
-    addStep(p.phase, p.message, detail);
-  });
+  }, 500);
 
   try {
     currentResult = await invoke<SearchResult>("search", { query });
+    clearInterval(pollTimer);
+    // Final poll to catch any remaining progress
+    try {
+      const steps = await invoke<ProgressEvent[]>("get_progress");
+      for (let i = lastStepCount; i < steps.length; i++) {
+        const p = steps[i];
+        let detail = "";
+        try { const d = JSON.parse(p.detail); if (d.sub_queries) detail = d.sub_queries.join(" · "); } catch (_) {}
+        addStep(p.phase, p.message, detail);
+      }
+    } catch (_) {}
     currentGraphData = buildGraphData(currentResult);
     renderResults(currentResult);
     document.getElementById("view-toggle")!.classList.remove("hidden");
   } catch (err) {
+    clearInterval(pollTimer);
     addStep("error", `搜索失败: ${err}`, "");
     document.getElementById("results-container")!.innerHTML =
       `<div class="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 text-sm">${esc(String(err))}</div>`;
   } finally {
-    unlisten();
     btn.disabled = false;
     btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> 搜索`;
   }

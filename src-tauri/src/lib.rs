@@ -8,17 +8,16 @@ use backends::llm::LlmBackend;
 use backends::search::openalex::OpenAlexBackend;
 use config::AppConfig;
 use orchestrator::Orchestrator;
-use std::sync::Mutex;
-use tauri::{Emitter, State};
+use std::sync::{Arc, Mutex};
+use tauri::State;
 
 pub struct AppState {
     config: Mutex<AppConfig>,
     llm: Mutex<Option<LlmBackend>>,
+    progress: Arc<Mutex<Vec<types::ProgressEvent>>>,
 }
 
 fn config_dir() -> Result<std::path::PathBuf, String> {
-    // On Windows: %APPDATA%/paper-search/
-    // On other: ~/.config/paper-search/
     #[cfg(target_os = "windows")]
     {
         let base = std::env::var("APPDATA").map_err(|_| "找不到 APPDATA 目录".to_string())?;
@@ -50,44 +49,46 @@ fn load_config() -> AppConfig {
 #[tauri::command]
 async fn search(
     state: State<'_, AppState>,
-    window: tauri::Window,
     query: String,
 ) -> Result<types::SearchResult, String> {
     let (config, llm) = {
         let config_guard = state.config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.clone();
         drop(config_guard);
-
         let mut llm_guard = state.llm.lock().map_err(|e| e.to_string())?;
         if llm_guard.is_none() {
             *llm_guard = Some(LlmBackend::new(config.llm.clone()));
         }
-        let llm = llm_guard.as_ref().unwrap().clone();
-        (config, llm)
+        (config, llm_guard.as_ref().unwrap().clone())
     };
 
-    // Immediate feedback before any async work
-    window.emit("progress", types::ProgressEvent {
-        phase: "start".into(),
-        message: "引擎启动，正在连接 LLM...".into(),
-        percent: 2,
-        detail: String::new(),
-    }).ok();
+    // Clear progress and get Arc clone for the orchestrator
+    state.progress.lock().unwrap().clear();
+    let progress = state.progress.clone();
 
     let backend = OpenAlexBackend::new();
+    let result = Orchestrator::run(&llm, &backend, query, &config, &progress).await;
 
-    Orchestrator::run(&window, &llm, &backend, query, &config)
-        .await
-        .map_err(|e| {
-            // Try to emit the error as a progress event
-            window.emit("progress", types::ProgressEvent {
+    match result {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            progress.lock().unwrap().push(types::ProgressEvent {
                 phase: "error".into(),
-                message: format!("搜索出错: {}", e),
+                message: format!("搜索失败: {}", e),
                 percent: 0,
                 detail: String::new(),
-            }).ok();
-            e.to_string()
-        })
+            });
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_progress(
+    state: State<'_, AppState>,
+) -> Result<Vec<types::ProgressEvent>, String> {
+    let p = state.progress.lock().map_err(|e| e.to_string())?;
+    Ok(p.clone())
 }
 
 #[tauri::command]
@@ -111,7 +112,6 @@ async fn update_config(
 
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     *config = new_config.clone();
-
     let mut llm = state.llm.lock().map_err(|e| e.to_string())?;
     *llm = Some(LlmBackend::new(new_config.llm));
 
@@ -127,8 +127,9 @@ pub fn run() {
         .manage(AppState {
             config: Mutex::new(config),
             llm: Mutex::new(None),
+            progress: Arc::new(Mutex::new(Vec::new())),
         })
-        .invoke_handler(tauri::generate_handler![search, get_config, update_config])
+        .invoke_handler(tauri::generate_handler![search, get_progress, get_config, update_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
