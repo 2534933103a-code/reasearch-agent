@@ -60,7 +60,7 @@ pub struct ProgressEvent {
     pub phase: String,
     pub message: String,
     pub percent: u8,
-    pub detail: String,  // JSON string with extra info (sub-queries, counts, etc.)
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,4 +81,21 @@ pub struct GraphNode {
     pub index: usize,
     pub title: String,
     pub cluster: u8,
+}
+
+// ── Conversation ────────────────────────────────────
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,  // "user" | "assistant" | "result"
+    pub content: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub title: String,
+    pub messages: Vec<ConversationMessage>,
+    pub search_result: Option<SearchResult>,
+    pub created_at: u64,
 }

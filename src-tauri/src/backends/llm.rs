@@ -1,4 +1,4 @@
-use crate::config::LlmConfig;
+use crate::config::LlmProfile;
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::Value;
@@ -6,11 +6,11 @@ use serde_json::Value;
 #[derive(Clone)]
 pub struct LlmBackend {
     client: Client,
-    config: LlmConfig,
+    pub config: LlmProfile,
 }
 
 impl LlmBackend {
-    pub fn new(config: LlmConfig) -> Self {
+    pub fn new(config: LlmProfile) -> Self {
         Self {
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(60))
