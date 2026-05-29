@@ -1,73 +1,93 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>智能学术论文搜索</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>tailwind.config={theme:{extend:{colors:{primary:'#4F46E5',accent:'#818CF8'}}}}</script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+    body { font-family: 'Inter', 'Noto Sans SC', sans-serif; }
+    .step-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .step-line { width: 2px; flex-shrink: 0; margin: 4px 0 4px 4px; }
+    .paper-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
-  <div class="max-w-4xl mx-auto px-4 py-8">
-    <div class="flex items-center justify-between mb-8">
-      <div class="flex-1 text-center">
-        <h1 class="text-3xl font-bold text-gray-900">智能学术论文搜索</h1>
-        <p class="mt-2 text-gray-500">输入复杂研究问题，自动检索、排序、归纳相关论文</p>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-3xl mx-auto px-4 py-10">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-10">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">学术论文搜索</h1>
+        <p class="text-sm text-slate-500 mt-1">基于 AI 的智能文献检索与分析</p>
       </div>
-      <button onclick="openSettings()" class="ml-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition" title="设置">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      <button onclick="openSettings()" class="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-xl transition border border-transparent hover:border-slate-200" title="设置">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
       </button>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
-      <div class="flex gap-3">
-        <input id="query-input" type="text" placeholder="输入你的研究问题，例如：MoE语言模型推理生成并行策略"
-          class="flex-1 px-4 py-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" autofocus />
+
+    <!-- Search Box -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6">
+      <div class="flex gap-2.5">
+        <input id="query-input" type="text"
+          placeholder="输入研究问题，例如：MoE 语言模型推理并行策略"
+          class="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition text-sm"
+          autofocus
+          onkeydown="if(event.key==='Enter')doSearch()"/>
         <button id="search-btn" onclick="doSearch()"
-          class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium whitespace-nowrap">搜索</button>
+          class="px-6 py-3 bg-primary text-white rounded-xl hover:bg-indigo-600 transition font-medium text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          搜索
+        </button>
       </div>
     </div>
 
-    <div id="progress-container" class="hidden mb-6">
-      <div class="flex items-center gap-3">
-        <div class="flex-1 bg-gray-200 rounded-full h-2">
-          <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
-        </div>
-        <span id="progress-text" class="text-sm text-gray-500"></span>
-      </div>
-    </div>
+    <!-- Live Activity Feed (during search) -->
+    <div id="activity-feed" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6"></div>
 
-    <div id="view-toggle" class="hidden flex justify-end gap-2 mb-4">
-      <button id="btn-list" onclick="switchView('list')" class="px-3 py-1 text-sm rounded bg-blue-600 text-white">列表</button>
-      <button id="btn-graph" onclick="switchView('graph')" class="px-3 py-1 text-sm rounded bg-gray-200 text-gray-600">图谱</button>
-    </div>
-
+    <!-- Results -->
     <div id="results-container"></div>
-    <div id="graph-container" class="hidden bg-white rounded-xl shadow-sm border" style="height:500px"></div>
+
+    <!-- View Toggle -->
+    <div id="view-toggle" class="hidden flex gap-1 mb-4">
+      <button id="btn-list" onclick="switchView('list')" class="px-4 py-1.5 text-sm rounded-lg bg-primary text-white transition font-medium">列表</button>
+      <button id="btn-graph" onclick="switchView('graph')" class="px-4 py-1.5 text-sm rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition font-medium">关系图</button>
+    </div>
+
+    <!-- Graph -->
+    <div id="graph-container" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200" style="height:520px"></div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-      <div class="bg-white rounded-xl shadow-lg w-full max-w-md mx-4 p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-gray-900">LLM 配置</h2>
-          <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600">&times;</button>
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-lg font-semibold text-slate-900">LLM 配置</h2>
+          <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
         </div>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">API Key</label>
-            <input id="cfg-api-key" type="password" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="sk-..." />
+            <label class="block text-sm font-medium text-slate-600 mb-1.5">API Key</label>
+            <input id="cfg-api-key" type="password" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition" placeholder="sk-..."/>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">Base URL</label>
-            <input id="cfg-base-url" type="text" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://api.deepseek.com" />
+            <label class="block text-sm font-medium text-slate-600 mb-1.5">Base URL</label>
+            <input id="cfg-base-url" type="text" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition" placeholder="https://api.deepseek.com"/>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">Model</label>
-            <input id="cfg-model" type="text" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="deepseek-chat" />
+            <label class="block text-sm font-medium text-slate-600 mb-1.5">Model</label>
+            <input id="cfg-model" type="text" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition" placeholder="deepseek-chat"/>
           </div>
-          <div class="flex justify-end gap-2 pt-2">
-            <button onclick="closeSettings()" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition">取消</button>
-            <button onclick="saveSettings()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">保存</button>
+          <div class="flex justify-end gap-2 pt-1">
+            <button onclick="closeSettings()" class="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition">取消</button>
+            <button onclick="saveSettings()" class="px-5 py-2.5 text-sm bg-primary text-white rounded-xl hover:bg-indigo-600 transition font-medium">保存配置</button>
           </div>
         </div>
       </div>

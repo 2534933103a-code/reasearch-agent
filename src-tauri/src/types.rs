@@ -60,6 +60,7 @@ pub struct ProgressEvent {
     pub phase: String,
     pub message: String,
     pub percent: u8,
+    pub detail: String,  // JSON string with extra info (sub-queries, counts, etc.)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
