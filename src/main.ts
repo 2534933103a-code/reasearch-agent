@@ -18,6 +18,7 @@ let currentView: "list" | "graph" = "list";
 let activitySteps: { icon: string; text: string; detail: string; done: boolean }[] = [];
 
 const PHASES: Record<string, { icon: string; label: string }> = {
+  start:          { icon: "🔌", label: "引擎启动" },
   decompose:      { icon: "🧠", label: "解析查询" },
   decompose_done: { icon: "✅", label: "查询分解" },
   search:         { icon: "🔍", label: "广度搜索" },
@@ -35,13 +36,20 @@ const PHASES: Record<string, { icon: string; label: string }> = {
 // ── Activity Feed ──────────────────────────────────
 function initActivityFeed() {
   activitySteps = [];
-  renderActivity();
+  addStep("start", "引擎启动，等待连接...", "正在向 DeepSeek 发送请求");
   document.getElementById("activity-feed")!.classList.remove("hidden");
 }
 
 function addStep(phase: string, message: string, detail: string) {
-  const meta = PHASES[phase] || { icon: "⏳", label: phase };
-  activitySteps.push({ icon: meta.icon, text: message, detail, done: phase.endsWith("_done") || phase === "done" });
+  const meta = PHASES[phase] || { icon: phase === "error" ? "❌" : "⏳", label: phase };
+  const isError = phase === "error";
+  // Replace the last placeholder step if it was the initial "start" and we got a real event
+  if (activitySteps.length === 1 && activitySteps[0].icon === "⏳" && phase === "start") {
+    activitySteps[0] = { icon: "🔌", text: message, detail, done: true };
+    renderActivity();
+    return;
+  }
+  activitySteps.push({ icon: isError ? "❌" : meta.icon, text: message, detail, done: phase.endsWith("_done") || phase === "done" || isError });
   if (activitySteps.length > 20) activitySteps.shift();
   renderActivity();
 }
@@ -52,17 +60,21 @@ function renderActivity() {
   for (let i = 0; i < activitySteps.length; i++) {
     const step = activitySteps[i];
     const isLast = i === activitySteps.length - 1;
+    const isActive = !step.done;
     html += `
     <div class="flex gap-3">
       <div class="flex flex-col items-center">
-        <span class="text-sm ${step.done ? "" : "animate-pulse"}">${step.icon}</span>
+        <span class="text-sm ${isActive ? "animate-pulse" : ""}">${step.icon}</span>
         ${!isLast ? '<div class="step-line flex-1 bg-slate-200"></div>' : ""}
       </div>
       <div class="pb-4 flex-1 min-w-0">
-        <p class="text-sm ${step.done ? "text-slate-600" : "text-slate-900 font-medium"}">${step.text}</p>
+        <p class="text-sm ${isActive ? "text-slate-900 font-medium" : "text-slate-600"}">${step.text}</p>
         ${step.detail ? `<p class="text-xs text-slate-400 mt-0.5 truncate">${step.detail}</p>` : ""}
       </div>
     </div>`;
+  }
+  if (activitySteps.length === 0) {
+    html += `<div class="flex items-center gap-3 py-2"><div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div><p class="text-sm text-slate-500">正在准备...</p></div>`;
   }
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
@@ -104,8 +116,9 @@ async function doSearch() {
     renderResults(currentResult);
     document.getElementById("view-toggle")!.classList.remove("hidden");
   } catch (err) {
+    addStep("error", `搜索失败: ${err}`, "");
     document.getElementById("results-container")!.innerHTML =
-      `<div class="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 text-sm">搜索失败: ${err}</div>`;
+      `<div class="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 text-sm">${esc(String(err))}</div>`;
   } finally {
     unlisten();
     btn.disabled = false;
