@@ -48,7 +48,7 @@ impl Ranker {
                         i, p.title,
                         p.authors.first().map(|s| s.as_str()).unwrap_or("Unknown"),
                         p.year, p.venue,
-                        &p.abstract_text[..300.min(p.abstract_text.len())]
+                        p.abstract_text
                     )
                 })
                 .collect();
@@ -64,7 +64,8 @@ impl Ranker {
 
             let resp = llm.chat(system, &user_prompt).await?;
             total_tokens += resp.tokens;
-            let json: Value = serde_json::from_str(&resp.content)?;
+            let content = resp.content.unwrap_or_default();
+            let json: Value = serde_json::from_str(&content)?;
 
             if let Some(scores) = json["scores"].as_array() {
                 for entry in scores {
