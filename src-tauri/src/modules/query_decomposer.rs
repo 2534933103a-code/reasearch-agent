@@ -26,7 +26,8 @@ impl QueryDecomposer {
 
         let resp = llm.chat(system, query).await?;
         let tokens = resp.tokens;
-        let json: Value = serde_json::from_str(&resp.content)
+        let content = resp.content.unwrap_or_default();
+        let json: Value = serde_json::from_str(&content)
             .context("Failed to parse LLM JSON response")?;
 
         let sub_queries: Vec<SubQuery> = json["sub_queries"]

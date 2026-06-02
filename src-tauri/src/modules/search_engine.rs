@@ -62,7 +62,8 @@ impl SearchEngine {
 
         let resp = llm.chat(system, &user_prompt).await?;
         let tokens = resp.tokens;
-        let json: serde_json::Value = serde_json::from_str(&resp.content)?;
+        let content = resp.content.unwrap_or_default();
+        let json: serde_json::Value = serde_json::from_str(&content)?;
 
         let new_queries: Vec<String> = json["new_queries"]
             .as_array()

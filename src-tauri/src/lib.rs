@@ -8,7 +8,7 @@ use backends::llm::LlmBackend;
 use backends::search::openalex::OpenAlexBackend;
 use config::{AppConfig, LlmProfile};
 use orchestrator::Orchestrator;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use tauri::State;
 use types::{Conversation, ConversationMessage};
 
@@ -17,6 +17,7 @@ pub struct AppState {
     llm: Mutex<Option<LlmBackend>>,
     progress: Arc<Mutex<Vec<types::ProgressEvent>>>,
     conversations: Mutex<Vec<Conversation>>,
+    cancelled: Arc<AtomicBool>,
 }
 
 fn config_dir() -> Result<std::path::PathBuf, String> {
@@ -98,11 +99,12 @@ async fn search(
     let progress = state.progress.clone();
     let backend = OpenAlexBackend::new();
 
-    let result = Orchestrator::run(&llm, &backend, query.clone(), &config, &progress).await;
-
+    state.cancelled.store(false, Ordering::SeqCst);
+    let result = Orchestrator::run(&llm, &backend, query.clone(), &config, &progress, None, &[], &state.cancelled).await;
     match result {
-        Ok(r) => {
+        Ok(mut r) => {
             let cid = conversation_id.unwrap_or_else(uuid_v4);
+            r.conversation_id = cid.clone();
             let ts = now_ts();
             let conv = Conversation {
                 id: cid.clone(),
@@ -111,7 +113,7 @@ async fn search(
                     ConversationMessage { role: "user".into(), content: query, timestamp: ts },
                     ConversationMessage { role: "result".into(), content: r.summary.clone(), timestamp: ts },
                 ],
-                search_result: Some(r.clone()),
+                search_results: vec![r.clone()],
                 created_at: ts,
             };
             let _ = save_conversation(&conv);
@@ -143,33 +145,59 @@ async fn refine_search(
         cs.iter().find(|c| c.id == conversation_id).cloned()
     };
 
-    // Generate refined query from conversation context
-    let refined_query = if let Some(ref c) = conv {
-        let history = c.messages.iter()
+    // Get original query from conversation (first user message)
+    let original_query = conv.as_ref().and_then(|c| {
+        c.messages.iter()
             .filter(|m| m.role == "user")
-            .map(|m| format!("- {}", m.content))
-            .collect::<Vec<_>>().join("\n");
-        let prompt = format!("用户之前的查询:\n{}\n\n用户反馈: {}\n\n请根据反馈生成更精确的英文搜索关键词。只输出关键词。", history, refinement);
-        llm.chat_text("你是学术搜索助手。根据用户反馈生成优化后的搜索关键词。", &prompt).await.map(|r| r.content).unwrap_or(refinement.clone())
-    } else {
-        refinement.clone()
+            .map(|m| m.content.clone())
+            .next()
+    }).unwrap_or_else(|| refinement.clone());
+
+    // Build refinement chain from all previous refinements
+    let refinement_context = {
+        let prev: Vec<String> = conv.as_ref().map(|c| {
+            c.messages.iter()
+                .filter(|m| m.role == "user")
+                .skip(1)  // skip original query
+                .map(|m| m.content.clone())
+                .collect()
+        }).unwrap_or_default();
+
+        if prev.is_empty() {
+            format!("用户细化要求: {}", refinement)
+        } else {
+            format!("之前的细化链: {}\n当前最新细化: {}", prev.join(" → "), refinement)
+        }
     };
+
+    // Collect all papers from previous search rounds
+    let existing_papers: Vec<types::Paper> = conv.as_ref().map(|c| {
+        c.search_results.iter().flat_map(|sr| {
+            sr.tiers.high_relevance.iter()
+                .chain(sr.tiers.partial_relevance.iter())
+                .map(|sp| sp.paper.clone())
+                .collect::<Vec<_>>()
+        }).collect()
+    }).unwrap_or_default();
 
     state.progress.lock().unwrap().clear();
     let progress = state.progress.clone();
     let backend = OpenAlexBackend::new();
 
-    let result = Orchestrator::run(&llm, &backend, refined_query.clone(), &config, &progress).await;
+    // Pass full refinement chain + existing papers — agent sees complete history
+    state.cancelled.store(false, Ordering::SeqCst);
+    let result = Orchestrator::run(&llm, &backend, original_query.clone(), &config, &progress, Some(&refinement_context), &existing_papers, &state.cancelled).await;
 
     match result {
-        Ok(r) => {
+        Ok(mut r) => {
+            r.conversation_id = conversation_id.clone();
             let ts = now_ts();
             let mut c = conv.unwrap_or(Conversation {
-                id: conversation_id.clone(), title: refinement.clone(), messages: vec![], search_result: None, created_at: ts,
+                id: conversation_id.clone(), title: refinement.clone(), messages: vec![], search_results: vec![], created_at: ts,
             });
             c.messages.push(ConversationMessage { role: "user".into(), content: refinement, timestamp: ts });
             c.messages.push(ConversationMessage { role: "result".into(), content: r.summary.clone(), timestamp: ts });
-            c.search_result = Some(r.clone());
+            c.search_results.push(r.clone());
             let _ = save_conversation(&c);
             if let Ok(mut cs) = state.conversations.lock() {
                 cs.retain(|c2| c2.id != c.id);
@@ -183,6 +211,66 @@ async fn refine_search(
             });
             Err(e.to_string())
         }
+    }
+}
+
+#[tauri::command]
+async fn cancel_search(state: State<'_, AppState>) -> Result<(), String> {
+    state.cancelled.store(true, Ordering::SeqCst);
+    state.progress.lock().map_err(|e| e.to_string())?.push(types::ProgressEvent {
+        phase: "cancelled".into(),
+        message: "用户取消了搜索".into(),
+        percent: 0,
+        detail: String::new(),
+        tokens: 0,
+    });
+    Ok(())
+}
+
+#[tauri::command]
+async fn export_papers(papers: Vec<types::ScoredPaper>, format: String) -> Result<String, String> {
+    match format.as_str() {
+        "bibtex" => {
+            let mut out = String::new();
+            for (i, sp) in papers.iter().enumerate() {
+                let p = &sp.paper;
+                let key = format!(
+                    "{}{}",
+                    p.authors.first().map(|a| a.split_whitespace().last().unwrap_or("unknown")).unwrap_or("unknown"),
+                    p.year
+                );
+                out.push_str(&format!(
+                    "@article{{{}_{},\n  title = {{{}}},\n  author = {{{}}},\n  year = {{{}}},\n  journal = {{{}}},\n  doi = {{{}}},\n  url = {{{}}}\n}}\n\n",
+                    key, i,
+                    p.title,
+                    p.authors.join(" and "),
+                    p.year,
+                    p.venue,
+                    p.doi,
+                    p.url
+                ));
+            }
+            Ok(out)
+        }
+        "markdown" => {
+            let mut out = String::from("| # | Title | Authors | Year | Venue | Citations | Score |\n");
+            out.push_str("|---|-------|---------|------|-------|-----------|-------|\n");
+            for (i, sp) in papers.iter().enumerate() {
+                let p = &sp.paper;
+                out.push_str(&format!(
+                    "| {} | {} | {} | {} | {} | {} | {} |\n",
+                    i + 1,
+                    p.title,
+                    p.authors.first().map(|s| s.as_str()).unwrap_or(""),
+                    p.year,
+                    p.venue,
+                    p.citation_count,
+                    sp.score
+                ));
+            }
+            Ok(out)
+        }
+        _ => Err("Unsupported format. Use 'bibtex' or 'markdown'.".into()),
     }
 }
 
@@ -237,9 +325,10 @@ pub fn run() {
             llm: Mutex::new(None),
             progress: Arc::new(Mutex::new(Vec::new())),
             conversations: Mutex::new(conversations),
+            cancelled: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
-            search, refine_search, get_progress, get_config, update_config,
+            search, refine_search, cancel_search, export_papers, get_progress, get_config, update_config,
             get_conversations, delete_conversation
         ])
         .run(tauri::generate_context!())

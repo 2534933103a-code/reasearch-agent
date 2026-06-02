@@ -1,112 +1,175 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>学术论文搜索</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config={theme:{extend:{colors:{primary:'#4F46E5'}}}}</script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{colors:{primary:'#4F46E5'}}}}</script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body { font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif; }
-    .step-line { width: 2px; flex-shrink: 0; margin: 4px 0 4px 4px; }
+    .step-line { width: 2px; flex-shrink: 0; margin: 2px 0; min-height: 8px; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
     .animate-pulse { animation: pulse 2s infinite; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
     .paper-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    #activity-feed { max-height: 420px; overflow-y: auto; scroll-behavior: smooth; }
+    #activity-feed::-webkit-scrollbar { width: 4px; }
+    #activity-feed::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+    .line-clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+    /* Dark mode base */
+    .dark body { background-color: #0f172a; }
+    .dark .paper-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    .dark #activity-feed::-webkit-scrollbar-thumb { background: #334155; }
+    /* Dark mode overrides for JS-generated elements */
+    .dark .bg-white { background-color: #1e293b; }
+    .dark .bg-slate-50 { background-color: #0f172a; }
+    .dark .text-slate-400 { color: #94a3b8; }
+    .dark .text-slate-500 { color: #94a3b8; }
+    .dark .text-slate-600 { color: #cbd5e1; }
+    .dark .text-slate-700 { color: #e2e8f0; }
+    .dark .text-slate-800 { color: #f1f5f9; }
+    .dark .text-slate-900 { color: #f8fafc; }
+    .dark .border-slate-100, .dark .border-slate-200 { border-color: #334155; }
+    .dark .bg-slate-50\/80, .dark .bg-slate-100, .dark [class*="bg-slate-50"] { background-color: #1e293b; }
+    .dark .bg-indigo-50 { background-color: #1e1b4b; }
+    .dark .bg-purple-50 { background-color: #1e1b3a; }
+    .dark .bg-emerald-50 { background-color: #0a2e1a; }
+    .dark .bg-amber-50 { background-color: #2e200a; }
+    .dark .bg-red-50 { background-color: #2e0a0a; }
+    .dark .bg-blue-50 { background-color: #0a1a2e; }
+    .dark .from-indigo-50, .dark .from-purple-50 { --tw-gradient-from: #1e1b4b; }
+    .dark .to-purple-50 { --tw-gradient-to: #1e1b3a; }
+    .dark .from-emerald-50 { --tw-gradient-from: #0a2e1a; }
+    .dark .to-teal-50 { --tw-gradient-to: #0a2e2a; }
+    .dark .from-amber-50 { --tw-gradient-from: #2e200a; }
+    .dark .to-orange-50 { --tw-gradient-to: #2e160a; }
   </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body class="bg-slate-50 dark:bg-slate-900 min-h-screen">
 <div class="flex h-screen">
-  <!-- Sidebar: Conversations -->
-  <div id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 hidden">
-    <div class="p-4 border-b border-slate-100 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-slate-700">历史对话</h2>
-      <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600 text-sm">&times;</button>
+  <!-- Sidebar -->
+  <div id="sidebar" class="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col flex-shrink-0 hidden">
+    <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-slate-700 dark:text-slate-300">历史对话</h2>
+      <div class="flex items-center gap-1">
+        <button onclick="newConversation()" class="text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 text-xs px-2 py-0.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition" title="新对话">+</button>
+        <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm">&times;</button>
+      </div>
     </div>
     <div id="conv-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
   </div>
 
-  <!-- Main -->
   <div class="flex-1 flex flex-col min-w-0">
     <!-- Top bar -->
-    <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 flex-shrink-0">
-      <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600 p-1" title="历史">
+    <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-3 flex items-center gap-3 flex-shrink-0">
+      <button onclick="toggleSidebar()" class="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-1" title="历史">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12h18M3 6h18M3 18h18"/></svg>
       </button>
-      <h1 class="text-base font-semibold text-slate-800">学术论文搜索</h1>
+      <h1 class="text-base font-semibold text-slate-800 dark:text-slate-200">学术论文搜索</h1>
       <span class="flex-1"></span>
-      <span id="active-profile-badge" class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">未配置</span>
-      <button onclick="openSettings()" class="text-slate-400 hover:text-slate-600 p-1" title="设置">
+      <button onclick="toggleDarkMode()" class="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-1 text-sm" title="深色模式">🌓</button>
+      <span id="active-profile-badge" class="text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full">未配置</span>
+      <button onclick="openSettings()" class="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-1" title="设置">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       </button>
     </header>
 
-    <!-- Content -->
     <div class="flex-1 overflow-y-auto px-6 py-6">
       <div class="max-w-3xl mx-auto">
         <!-- Search Box -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 mb-4">
           <div class="flex gap-2">
             <input id="query-input" type="text"
               placeholder="输入研究问题，例如：MoE 语言模型推理并行策略"
-              class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition"
+              class="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition"
               onkeydown="if(event.key==='Enter')doSearch()"/>
             <button id="search-btn" onclick="doSearch()"
               class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-indigo-600 transition text-sm font-medium disabled:opacity-50">
               搜索</button>
+            <button id="stop-btn" onclick="doStop()"
+              class="hidden px-5 py-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition text-sm font-medium">
+              停止</button>
           </div>
         </div>
 
         <!-- Activity Feed -->
-        <div id="activity-feed" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-4"></div>
+        <div id="activity-feed" class="hidden bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 mb-4"></div>
+
+        <!-- Export bar -->
+        <div id="export-bar" class="hidden bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-3 mb-4 flex items-center gap-2"></div>
 
         <!-- Results -->
         <div id="results-container"></div>
 
-        <!-- Refinement Chat -->
-        <div id="refine-box" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
-          <p class="text-xs text-slate-400 mb-2">对结果不满意？输入反馈以细化搜索</p>
-          <div class="flex gap-2">
+        <!-- Refinement -->
+        <div id="refine-box" class="hidden bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 mb-4">
+          <p class="text-xs text-slate-400 dark:text-slate-500 mb-2">对结果不满意？输入反馈以细化搜索</p>
+          <div class="flex gap-2 mb-2">
             <input id="refine-input" type="text" placeholder="例如：只看2024年的论文 / 聚焦并行策略方向"
-              class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-primary/20 outline-none transition"
+              class="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary/20 outline-none transition"
               onkeydown="if(event.key==='Enter')doRefine()"/>
             <button onclick="doRefine()" id="refine-btn"
-              class="px-4 py-2 bg-slate-700 text-white rounded-xl hover:bg-slate-800 transition text-sm">细化</button>
+              class="px-4 py-2 bg-slate-700 dark:bg-slate-600 text-white rounded-xl hover:bg-slate-800 dark:hover:bg-slate-500 transition text-sm">细化</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400 dark:text-slate-500">年份:</span>
+            <input id="year-from" type="number" placeholder="起始" min="1950" max="2026"
+              class="w-20 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-primary/20 outline-none"/>
+            <span class="text-xs text-slate-400">—</span>
+            <input id="year-to" type="number" placeholder="截止" min="1950" max="2026"
+              class="w-20 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-primary/20 outline-none"/>
+            <span class="text-[10px] text-slate-400 dark:text-slate-500">(自动追加到细化指令)</span>
           </div>
         </div>
 
         <!-- View Toggle -->
         <div id="view-toggle" class="hidden flex gap-1 mb-4">
           <button id="btn-list" onclick="switchView('list')" class="px-4 py-1.5 text-sm rounded-lg bg-primary text-white transition">列表</button>
-          <button id="btn-graph" onclick="switchView('graph')" class="px-4 py-1.5 text-sm rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition">关系图</button>
+          <button id="btn-graph" onclick="switchView('graph')" class="px-4 py-1.5 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition">关系图</button>
         </div>
 
         <!-- Graph -->
-        <div id="graph-container" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200" style="height:520px"></div>
+        <div id="graph-container" class="hidden bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700" style="height:520px"></div>
       </div>
     </div>
   </div>
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] overflow-y-auto">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-5">
-        <h2 class="text-lg font-semibold text-slate-900">API 配置管理</h2>
-        <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-200">API 配置管理</h2>
+        <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xl">&times;</button>
       </div>
-      <!-- Profile list -->
       <div id="profile-list" class="space-y-2 mb-4"></div>
-      <button onclick="addProfile()" class="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-400 hover:border-primary hover:text-primary transition mb-4">+ 新增配置</button>
-      <!-- Edit active profile -->
-      <div id="profile-editor" class="space-y-3 border-t border-slate-100 pt-4">
+      <button onclick="addProfile()" class="w-full py-2 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-400 dark:text-slate-500 hover:border-primary hover:text-primary transition mb-4">+ 新增配置</button>
+      <div id="profile-editor" class="space-y-3 border-t border-slate-100 dark:border-slate-700 pt-4">
         <p class="text-xs font-semibold text-slate-500 uppercase">编辑选中配置</p>
-        <input id="edit-name" type="text" placeholder="配置名称" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
-        <input id="edit-base-url" type="text" placeholder="Base URL" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
-        <input id="edit-model" type="text" placeholder="Model" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
-        <input id="edit-api-key" type="password" placeholder="API Key" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+        <input id="edit-name" type="text" placeholder="配置名称" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+        <input id="edit-base-url" type="text" placeholder="Base URL" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+        <input id="edit-model" type="text" placeholder="Model" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+        <input id="edit-api-key" type="password" placeholder="API Key" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+      </div>
+      <!-- Budget settings -->
+      <div class="border-t border-slate-100 dark:border-slate-700 pt-4 mt-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase mb-3">搜索预算</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">LLM 最大调用次数</label>
+            <input id="edit-max-llm" type="number" min="3" max="30" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">搜索最大调用次数</label>
+            <input id="edit-max-search" type="number" min="5" max="60" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"/>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2">控制 Agent 的搜索深度。数值越大搜索越深入，但耗时越长。</p>
       </div>
       <div class="flex justify-end gap-2 mt-4">
-        <button onclick="closeSettings()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+        <button onclick="closeSettings()" class="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl">取消</button>
         <button onclick="saveSettings()" class="px-4 py-2 text-sm bg-primary text-white rounded-xl hover:bg-indigo-600 font-medium">保存</button>
       </div>
     </div>

@@ -26,7 +26,7 @@ impl ResultOrganizer {
         );
 
         let resp = llm.chat_text(system, &user_prompt).await?;
-        Ok((resp.content, resp.tokens))
+        Ok((resp.content.unwrap_or_default(), resp.tokens))
     }
 
     pub fn build_graph(tiers: &TieredResults) -> GraphData {
@@ -75,10 +75,13 @@ impl ResultOrganizer {
         rounds_used: u32,
     ) -> SearchResult {
         SearchResult {
+            conversation_id: String::new(), // filled by caller (lib.rs commands)
             summary,
             tiers,
             total_candidates,
             rounds_used,
+            needs_clarification: false,
+            clarification_options: vec![],
         }
     }
 }
